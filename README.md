@@ -1,2 +1,3 @@
 # vdom
-html parser and virtual dom.
+
+Html parser and virtual dom inspired by vue2.
