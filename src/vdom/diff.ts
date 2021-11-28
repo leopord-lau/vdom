@@ -3,10 +3,10 @@ import { moveMap, diffMap, domPatch, keyMap } from "../utils/types";
 
 
 // 新旧节点差异比较（文本、属性、子节点）
-function diff(oldNode: Vlement, newNode: Vlement): object {
+function diff(oldNode: Vlement, newNode: Vlement): keyMap {
   let index: number = 0;
   // 用于存储差异节点
-  let difference: object = {};
+  let difference: keyMap = {};
   // 深度遍历
   dsfWalk(oldNode, newNode, index, difference);
   return difference;
@@ -49,6 +49,7 @@ function dsfWalk(oldNode: Vlement | string, newNode: Vlement | string | null, in
   }
 }
 
+// 比较子节点
 function diffChildren(oldChildList: Array<Vlement | string>, newChildList: Array<Vlement| string | null> , index: number, difference: keyMap, diffList: Array<moveMap>): void {
   let diffMap: diffMap = getDiffList(oldChildList, newChildList, "key");
   newChildList = diffMap.children;
@@ -67,7 +68,6 @@ function diffChildren(oldChildList: Array<Vlement | string>, newChildList: Array
     dsfWalk(child, newChild, currentNodeIndex, difference);
     leftNode = child;
   })
-
 }
 
 // 新旧节点子节点对比
@@ -107,7 +107,7 @@ function getDiffList(oldChildList: Array<Vlement | string>, newChildList: Array<
         let newItemIndex: number = newKeyIndex[itemKey];
         children.push(newChildList[newItemIndex]);
       }
-    // 旧节点不存在key，根据旧节点的个数将新节点逐个添加到数组中，当新节点个数比旧节点多时就会有部分节点未添加到数组中
+    // 旧节点不存在key，根据旧节点的个数将新节点逐个添加到数组中，当新节点个数比旧节点多时就会有节点添加到数组中
     } else {
       let freeItem: Vlement | string = newFree[freeIndex++];
       if(freeItem) {
@@ -122,7 +122,7 @@ function getDiffList(oldChildList: Array<Vlement | string>, newChildList: Array<
   let copyList: Array<Vlement | string | null> = children.slice(0);
   // 重置
   i = 0;
-  // 获取旧节点需要移除的节点数组
+  // 移除新节点中不存在但是旧节点中存在的子节点
   while(i < copyList.length) {
     if(copyList[i] === null) {
       _remove(i);
@@ -188,11 +188,6 @@ function getDiffList(oldChildList: Array<Vlement | string>, newChildList: Array<
     children: children
   }
 }
-
-
-
-
-
 
 type KeyIndexAndFree = Object & {
   keyIndex: keyMap,

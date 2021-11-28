@@ -19,6 +19,7 @@ module.exports = {
   plugins: [
     new HtmlWebpackPlugin({   //html编译插件
       template: path.resolve(__dirname, "./public/index.html"), 
+      inject: "body"
       // scriptLoading: "blocking"
     }),
   ],
