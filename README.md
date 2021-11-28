@@ -4,748 +4,765 @@ Html parser and virtual dom inspired by vue2.
 
 here's a blog in chinese;
 
-# vue 知识
+# 虚拟 DOM
 
-## `SPA`单页面的理解
+## 真实 DOM 渲染流程
 
-`SPA`（ `single-page application` ）仅在 `Web` 页面初始化时加载相应的 `HTML`、`JavaScript` 和 `CSS`。一旦页面加载完成，`SPA` 不会因为用户的操作而进行页面的重新加载或跳转；取而代之的是利用路由机制实现 `HTML` 内容的变换，`UI` 与用户的交互，避免页面的重新加载。
+浏览器渲染引擎工作流程都差不多，大致分为 5 步，创建`DOM`树--创建`StyleRules`--创建`Render`树--布局`Layout`--绘制`Painting`。
 
-**优点**
+1. 用`HTML`分析器，分析`HTML`元素，构建一颗`DOM`树(标记化和树构建)
+2. 用`CSS`分析器，分析`CSS`文件和元素上的`inline`样式，生成页面的样式表
+3. 将`DOM`树和样式表，关联起来，构建一颗`Render`树(这一过程又称为`Attachment`)。每个`DOM`节点都有`attach`方法，接受样式信息，返回一个`render`对象(又名`renderer`)。这些`render`对象最终会被构建成一颗`Render`树。
+4. 有了`Render`树，浏览器开始布局，为每个`Render`树上的节点确定一个在显示屏上出现的精确坐标。
+5. `Render`树和节点显示坐标都有了，就调用每个节点`paint`方法，把它们绘制出来。
 
-- 用户体验好、快，内容的改变不需要重新加载整个页面，避免了不必要的跳转和重复渲染；
-- 基于上面一点，SPA 相对对服务器压力小；
-- 前后端职责分离，架构清晰，前端进行交互逻辑，后端负责数据处理；
+在使用原生`js`或`JQ`操作`DOM`时，浏览器会从构建`DOM`树开始从头到尾执行一遍流程。当我们需要操作 10 个`DOM`节点时，浏览器会执行 10 次流程，例如，第一次计算完，紧接着下一个 DOM 更新请求，这个节点的坐标值就变了，前一次计算为无用功。计算 DOM 节点坐标值等都是白白浪费的性能。即使计算机硬件一直在迭代更新，操作 DOM 的代价仍旧是昂贵的，频繁操作还是会出现页面卡顿，影响用户体验。
 
-**缺点**
+> 回流和重绘
+>
+> - 回流 `reflow`:当渲染树`renderTree`中的一部分或全部因为尺寸、布局、隐藏等改变改重新构建，称之为回流。
+> - 重绘 `repaint`：当渲染树`renderTree`中的一部分元素需要更新属性，而属性只会影响外观、风格而不影响布局，比如颜色、字体大小等，则称之为重绘。
+>
+> 用`jquery`时基本都是在操作`dom`。会频繁引起呈现树的重绘和回流，pc 端处理能力还不错，但移动端性能就会很差。导致页面卡顿。
 
-- 初次加载耗时多：为实现单页 `Web` 应用功能及显示效果，需要在加载页面的时候将 `JavaScript`、`CSS` 统一加载，部分页面按需加载；
-- 前进后退路由管理：由于单页应用在一个页面中显示所有的内容，所以不能使用浏览器的前进后退功能，所有的页面切换需要自己建立堆栈管理；
-- `SEO` 难度较大：由于所有的内容都在一个页面中动态替换显示，所以在 `SEO` 上其有着天然的弱势。
+## 虚拟 DOM 概念
 
-## `vue`生命周期
+`virtual DOM` 虚拟`DOM`，用普通`js`对象来描述`DOM`结构，因为不是真实`DOM`，所以称之为虚拟`DOM`。
 
-`Vue` 实例有一个完整的生命周期，也就是从开始创建、初始化数据、编译模版、挂载 `Dom` -> 渲染、更新 -> 渲染、卸载等一系列过程，我们称这是 `Vue` 的生命周期。
+虚拟`DOM`就是为了解决浏览器性能问题而被设计出来的。如前，若一次操作中有 10 次更新`DOM`的动作，虚拟`DOM`不会立即操作`DOM`，而是将这 10 次更新的`diff`内容保存到本地一个`js`对象中，最终将这个`js`对象一次性`attch`到`DOM`树上，再进行后续操作，避免大量无谓的计算量。所以，用`js`对象模拟`DOM`节点的好处是，页面的更新可以先全部反映在`js`对象(虚拟`DOM`)上，操作内存中的`js`对象的速度显然要更快，等更新完成后，再将最终的`js`对象映射成真实的`DOM`，交由浏览器去绘制。
 
-| 生命周期      | 描述                                                                  |
-| ------------- | --------------------------------------------------------------------- |
-| beforeCreate  | 组件实例被创建之初，组件的属性生效之前                                |
-| created       | 组件实例已经完全创建，属性也绑定，但真实 dom 还没有生成，$el 还不可用 |
-| beforeMount   | 在挂载开始之前被调用：相关的 render 函数首次被调用                    |
-| mounted       | el 被新创建的 vm.$el 替换，并挂载到实例上去之后调用该钩子             |
-| beforeUpdate  | 组件数据更新之前调用，发生在虚拟 DOM 打补丁之前                       |
-| update        | 组件数据更新之后                                                      |
-| activited     | keep-alive 专属，组件被激活时调用                                     |
-| deactivated   | keep-alive 专属，组件被销毁时调用                                     |
-| beforeDestory | 组件销毁前调用                                                        |
-| destoryed     | 组件销毁后调用                                                        |
+## 实现一个虚拟 DOM
 
-## 父组件和子组件生命周期钩子函数执行顺序
+### 1. 解析`html`标签
 
-`Vue` 的父组件和子组件生命周期钩子函数执行顺序可以归类为以下 4 部分：
+将`html`中的标签进行解析，转换成对象格式。
 
-- 加载渲染过程
+通过`document.getElementsByTagName`或者其他方法获取到节点的`string`格式作为`template`进行解析。
 
-父 `beforeCreate` -> 父 `created` -> 父 `beforeMount` -> 子 `beforeCreate` -> 子` created` -> 子 `beforeMount` -> 子`mounted` -> 父 `mounted`
+新建一个指针用来标识当前解析的位置，通过循环不断读取`template`。我们知道标签是由`<tagName>`尖括号标识的，那么我们可以通过查找`<`字符是否存在及位置来解析`template`。
 
-- 子组件更新过程
-
-父 `beforeUpdate` -> 子 `beforeUpdate` -> 子 `updated` -> 父 `updated`
-
-- 父组件更新过程
-
-父 `beforeUpdate` -> 父 `updated`
-
-- 销毁过程
-
-父 `beforeDestroy` -> 子 `beforeDestroy` -> 子 `destroyed` -> 父`destroyed`
-
-## 异步请求
-
-可以在钩子函数 `created`、`beforeMount`、`mounted` 中进行调用，因为在这三个钩子函数中，`data` 已经创建，可以将服务端端返回的数据进行赋值。但是本人推荐在 `created` 钩子函数中调用异步请求，因为在 `created` 钩子函数中调用异步请求有以下优点：
-
-- 能更快获取到服务端数据，减少页面 `loading` 时间；
-- `ssr` 不支持 `beforeMount` 、`mounted` 钩子函数，所以放在 `created` 中有助于一致性；
-
-## `v-if`与`v-show`的区别
-
-`v-if` 是真正的条件渲染，因为它会确保在切换过程中条件块内的事件监听器和子组件适当地被销毁和重建；也是惰性的：如果在初始渲染时条件为假，则什么也不做——直到条件第一次变为真时，才会开始渲染条件块(只有当条件为`true`时，该元素才会存在与`dom`树上)。
-
-`v-show` 就简单得多——不管初始条件是什么，元素总是会被渲染，并且只是简单地基于 `CSS` 的 `“display”` 属性进行切换(条件为`false`，`display`值为`none`，但此时`dom`树上存在这个元素).
-
-所以，`v-if` 适用于在运行时很少改变条件，不需要频繁切换条件的场景；`v-show` 则适用于需要非常频繁切换条件的场景。
-
-## `class`与`style`动态绑定的方式
-
-1. 对象语法
-
-`class`
+当`<`处在第一个位置时，说明正在解析一个标签。而当`<`处于其他位置并不在第一个位置，说明`<`字符前面的字符都是处于上一个父标签中的内容。当没有找到`<`字符，那么说明传入的`template`其实是一个文本，这时我们对它的处理是把它包裹在一个`p`标签中进行解析（当然也可以做其他处理）。
 
 ```js
-<div :class="{active: isActive, 'danger': hasError}"></div>
+let needle: number = 0;
 
-data: {
-  isActive: true,
-  hasError: false
-}
-```
-
-`style`类似
-
-```js
-<div :style"{color: activeColor, fontSize: fontSize + 'px'}"></div>
-
-data: {
-  activeColor: 'blue',
-  fontSize: 30
-}
-```
-
-2. 数组语法
-
-`class`
-
-```js
-<div :class="[isActive ? activeClass : '', errorClass]"></div>
-
-data: {
-  activeClass: 'active'
-  errorClass: 'danger'
-}
-```
-
-`style`类似
-
-```js
-<div :style"[styleColor, styleSize]"></div>
-
-data: {
-  styleColor: {
-    color: 'red'
-  },
-  styleSize: {
-    fontSize: '30px'
+while (template) {
+  template = template.trim();
+  let startIndex = template.indexOf('<');
+  // 解析标签
+  if (startIndex === 0) {
+    // ...
+  }
+  // 解析父标签的内容
+  if (startIndex >= 0) {
+    // ...
+  }
+  // 纯文本
+  if (startIndex < 0) {
+    console.warn('you must select at least one node');
+    template = `<p>${template}</p>`;
+    continue;
   }
 }
 ```
 
-## `Vue`单向数据流
-
-所有的 `prop` 都使得其父子 `prop` 之间形成了一个单向下行绑定：父级 `prop` 的更新会向下流动到子组件中，但是反过来则不行。这样会防止从子组件意外改变父级组件的状态，从而导致你的应用的数据流向难以理解。
-
-额外的，每次父级组件发生更新时，子组件中所有的 `prop` 都将会刷新为最新的值。这意味着你不应该在一个子组件内部改变 `prop`。如果你这样做了，`Vue` 会在浏览器的控制台中发出警告。子组件想修改时，只能通过`$emit` 派发一个自定义事件，父组件接收到后，由父组件修改。
-
-有两种常见的试图改变一个 `prop` 的情形 :
-
-这个 `prop` 用来传递一个初始值；这个子组件接下来希望将其作为一个本地的 `prop` 数据来使用。 在这种情况下，最好定义一个本地的 `data` 属性并将这个 `prop` 用作其初始值：
+在解析标签时，首先需要过滤出注释 `<!-- \** -->`及`docType`、`html`等标签。
 
 ```js
-props: ['initialCounter'],
-data: function () {
-  return {
-    counter: this.initialCounter
+let startTagStartReg = /^<([a-zA-Z0-9]*)/;
+let startTagEndReg = /^\s*(\/?)>/;
+let endTagReg = /^<\/([a-zA-Z0-9]*)[^>]*>/;
+let tagAttributeReg = /^\s*([^\s"'<>\/=]+)(?:\s*(=)\s*(?:"([^"]*)"+|'([^']*)'+|([^\s"'=<>`]+)))?/;
+let commentReg = /^<!\--/;
+let conditionalComment = /^<!\[/;
+let doctypeReg = /^<!DOCTYPE [^>]+>/i;
+let htmlReg = /^<html [^>]+>/i;
+
+if (startIndex === 0) {
+  // 注释
+  if (commentReg.test(template)) {
+      let commentTagEnd = template.indexOf('-->');
+      if (commentTagEnd >= 0) {
+          // 移动指针
+          tailor(commentTagEnd + 3);
+          continue;
+      }
   }
+  // http://en.wikipedia.org/wiki/Conditional_comment#Downlevel-revealed_conditional_comment
+  if (conditionalComment.test(template)) {
+      let conditionalCommentTagEnd = template.indexOf(']>');
+      if (conditionalCommentTagEnd >= 0) {
+          tailor(conditionalCommentTagEnd + 2);
+          continue;
+      }
+  }
+  // DocType:
+  let doctypeMatchResult = template.match(doctypeReg);
+  if (doctypeMatchResult) {
+      tailor(doctypeMatchResult[0].length);
+      continue;
+  }
+
+  // htmlType:
+  let htmlMatchResult = template.match(htmlReg);
+  if (htmlMatchResult) {
+      console.warn("root element can't be html, or it would in a infinite loop");
+      break;
+  }
+
+  // 处理标签
+  // ...
 }
 ```
 
-这个 `prop` 以一种原始的值传入且需要进行转换。 在这种情况下，最好使用这个 `prop` 的值来定义一个计算属性
+在处理完特殊标签后，我们继续看如何处理普通标签。主要是对开始和结束两个标签进行处理。
 
 ```js
-props: ['size'],
-computed: {
-  normalizedSize: function () {
-    return this.size.trim().toLowerCase()
+  // 结束标签
+  let endTagMatchResult = template.match(endTagReg);
+  if (endTagMatchResult) {
+      let currentIndex = needle;
+      tailor(endTagMatchResult[0].length);
+      parseEndTag(endTagMatchResult[1], currentIndex, needle);
+      continue;
   }
-}
-```
-
-## `computed`和`watch`
-
-`computed`： 是计算属性，依赖其它属性值，并且 `computed` 的值有缓存，只有它依赖的属性值发生改变，下一次获取 `computed` 的值时才会重新计算 `computed` 的值；
-
-`watch`： 更多的是「观察」的作用，类似于某些数据的监听回调 ，每当监听的数据变化时都会执行回调进行后续操作；
-
-**运用场景**：
-
-- 当我们需要进行数值计算，并且依赖于其它数据时，应该使用 `computed`，因为可以利用 `computed` 的缓存特性，避免每次获取值时，都要重新计算；
-
-- 当我们需要在数据变化时执行异步或开销较大的操作时，应该使用 `watch`，使用 `watch` 选项允许我们执行异步操作 ( 访问一个 API )，限制我们执行该操作的频率，并在我们得到最终结果前，设置中间状态。这些都是计算属性无法做到的。
-
-## 组件通信的六种方式
-
-### 一、 `props` / `$emit`
-
-1. 父组件 -> 子组件
-
-父组件
-
-```html
-<Son :name="name" />
-```
-
-子组件
-
-```html
-<template>
-  <h1>{{name}}</h1>
-</template>
-
-<script>
-  export default {
-    props: {
-      name: {
-        type: String,
-        required: true,
-      },
-    },
-  };
-</script>
-```
-
-2. 子组件 -> 父组件
-
-父组件
-
-```html
-<template>
-  <div id="app">
-    <Son :name="named" @updateName="updateName"></Son>
-  </div>
-</template>
-
-<script>
-  import Son from './son.vue';
-
-  export default {
-    name: 'App',
-    data() {
-      return {
-        named: 'leo',
-      };
-    },
-    components: {
-      Son,
-    },
-    methods: {
-      updateName(name) {
-        this.named = name;
-      },
-    },
-  };
-</script>
-```
-
-子组件
-
-```html
-<template>
-  <h1 @click="changeName">{{name}}</h1>
-</template>
-
-<script>
-  export default {
-    props: {
-      name: {
-        type: String,
-        required: true,
-      },
-    },
-    methods: {
-      changeName() {
-        this.$emit('updateName', '子组件向父组件传值');
-      },
-    },
-  };
-</script>
-```
-
-### 二、 `$emit` / `$on`
-
-这种方法通过一个空的`Vue`实例作为中央事件总线（事件中心），用它来触发事件和监听事件,巧妙而轻量地实现了任何组件间的通信，包括父子、兄弟、跨级。
-
-为了方便将`Bus`（空`vue`）定义在一个组件中，在实际的运用中一般会新建一个`Bus.js`
-
-```js
-import Vue from 'vue';
-const Bus = new Vue();
-export default Bus;
-```
-
-组件 1：
-
-```js
-import Bus from './Bus'
-
-export default {
-    data() {
-        return {
-            .........
-            }
-      },
-  methods: {
-        ....
-        Bus.$emit('updateName', 'leo')
-    },
-
+  // 开始标签
+  let startTagMatchResult = parseStartTag();
+  if (startTagMatchResult) {
+      processStartTag(startTagMatchResult);
+      if (shouldIgnoreFirstNewline(lastTag, template)) {
+          tailor(1);
+      }
+      continue;
   }
 ```
 
-组件 2：
+先来看处理开始标签部分。在匹配到开始标签后，开始解析这个标签，获取标签名跟标签内的所有属性。
 
 ```js
-import Bus from './Bus'
-
-export default {
-    data() {
-        return {
-            .........
-            }
-      },
-    mounted () {
-       Bus.$on('updateName', content => {
-          console.log(content)
-        });
+// 解析开始的标签
+function parseStartTag() {
+  let tag = template.match(startTagStartReg);
+  if (tag) {
+    let piece: parseStartTagReult = {
+      tagName: tag[1],
+      attributes: [],
+      startIndex: needle,
+      endIndex: -1,
+      content: '',
+    };
+    tailor(tag[0].length);
+    let endTag, attribute;
+    // 读取标签中的属性
+    while (
+      !(endTag = template.match(startTagEndReg)) &&
+      (attribute = template.match(tagAttributeReg))
+    ) {
+      tailor(attribute[0].length);
+      piece.attributes.push(attribute);
     }
-}
-```
-
-当然也可以直接将 Bus 注入到 Vue 根对象中。
-
-```js
-new Vue({
-  render: (h) => h(App),
-  data: {
-    Bus: new Vue(),
-  },
-}).$mount('#app');
-```
-
-在子组件中通过`this.$root.Bus.$on()`,`this.$root.Bus.$emit()`来调用。
-
-将`bus`挂载到`vue.prototype`上。
-
-```js
-// plugin/index.js
-import Bus from 'vue';
-let install = function (Vue) {
-    ... ...
-    // 设置eventBus
-    Vue.prototype.bus = new Bus();
-    ... ...
-}
-
-export default {install};
-
-// main.js
-import Vue from 'vue';
-import plugin from './plugin/index';
-
-Vue.use(plugin);
-```
-
-组件一中定义
-
-```js
-created () {
-  this.bus.$on('updateData', this.getdata);
-}
-```
-
-组件二中调用
-
-```js
-this.bus.$emit('updateData', { loading: false });
-```
-
-注意：注册的总线事件要在组件销毁时卸载，否则会多次挂载，造成触发一次但多个响应的情况
-
-```js
-beforeDestroy () {
-  this.bus.$off('updateData', this.getData);
-}
-```
-
-### 三、 `vuex`
-
-`Vuex` 是一个专为 `Vue.js`应用开发的状态管理模式，集中式存储管理应用所有组件的状态。
-`Vuex`遵循“单向数据流”理念，易于问题追踪以及提高代码可维护性。
-
-`state`保存数据状态，`mutations`用于修改状态。
-
-```js
-export default new Vuex.Store({
-  state: { count: 0 },
-  mutations: {
-    increment(state) {
-      state.count += 1;
-    },
-  },
-});
-```
-
-使用：
-
-```html
-<template>
-  <div>
-    <div>数字： {{$store.state.count}}</div>
-    <button @click="add">增加</button>
-  </div>
-</template>
-
-<script>
-  export default {
-    methods: {
-      add() {
-        this.$store.commit('increment');
-      },
-    },
-  };
-</script>
-```
-
-#### `vuex`结合`localStorage`
-
-`vuex` 是 `vue` 的状态管理器，存储的数据是响应式的。但是并不会保存起来，刷新之后就回到了初始状态，具体做法应该在`vuex`里数据改变的时候把数据拷贝一份保存到`localStorage`里面，刷新之后，如果`localStorage`里有保存的数据，取出来再替换`store`里的`state`。
-
-```js
-let defaultNum = 0;
-try {
-  // 用户关闭了本地存储功能，此时在外层加个try...catch
-  if (!defaultNum) {
-    defaultNum = Number(window.localStorage.getItem('defaultNum'));
+    if (endTag) {
+      // 看看 > 字符前面有没有 / 字符，有说明是自关闭标签
+      piece.unarySlash = endTag[1];
+      tailor(endTag[0].length);
+      piece.endIndex = needle;
+      return piece;
+    }
   }
-} catch (e) {}
-
-export default new Vuex.Store({
-  state: { count: defaultNum },
-  mutations: {
-    increment(state) {
-      state.count += 1;
-      try {
-        window.localStorage.setItem('defaultNum', state.count);
-      } catch (e) {}
-    },
-  },
-});
+}
 ```
 
-这里需要注意的是：由于`vuex`里，我们保存的状态，是数字，而`localStorage`只支持字符串，所以需要转换一下。
+那么这个方式其实就是返回包含这个标签信息的一个对象。
 
-### 四、`$attrs` / `$listeners`
+`processStartTag`
 
-多级组件嵌套需要传递数据时，通常使用的方法是通过`vuex`。但如果仅仅是传递数据，而不做中间处理，使用 `vuex` 处理，未免有点大材小用。为此`Vue2.4` 版本提供了另一种方法----`$attrs` / `$listeners`。
+```js
+// 处理开始标签
+function processStartTag(startTag: parseStartTagReult) {
+  let tagName = startTag.tagName;
+  let unarySlash = startTag.unarySlash;
+  let attrLength = startTag.attributes.length;
+  let attrArr = new Array(attrLength);
+  let i = 0;
+  // 获取属性
+  for (; i < attrLength; i++) {
+    let match = startTag.attributes[i];
+    let value = match[3] || match[4] || match[5] || '';
+    attrArr[i] = {
+      name: match[1],
+      value: value,
+    };
+  }
 
-- `$attrs`：包含了父作用域中不被 `prop` 所识别 (且获取) 的特性绑定 (`class` 和 `style` 除外)。当一个组件没有声明任何 `prop` 时，这里会包含所有父作用域的绑定 (`class` 和 `style` 除外)，并且可以通过 `v-bind="$attrs"` 传入内部组件。通常配合 `inheritAttrs` 选项一起使用。(`inheritAttrs`可以关闭自动挂载到组件根元素上的没有在`props`声明的属性，默认为`true`，也就是子组件上没有在`props`声明的属性都是添加到元素的标签上)
-
-- `$listeners`：包含了父作用域中的 (不含 `.native` 修饰器的) `v-on` 事件监听器。它可以通过 `v-on="$listeners"` 传入内部组件。
-
-```html
-// father.vue
-<Son
-  :foo="foo"
-  :boo="boo"
-  :coo="coo"
-  :doo="doo"
-  @method1="method1"
-  @method2="method2"
-></Son>
-
-<script>
-  import Son from './son.vue';
-
-  export default {
-    name: 'App',
-    data() {
-      return {
-        foo: 'foo',
-        boo: 'boo',
-        coo: 'coo',
-        doo: 'doo',
+  if (options.process) {
+    options.process(
+      tagName,
+      attrArr,
+      unarySlash,
+      startTag.startIndex,
+      startTag.endIndex
+    );
+  }
+  if (tagName !== 'meta') {
+    if (!unarySlash) {
+      let tag: tagType = {
+        tag: tagName,
+        lowerCasedTag: tagName.toLowerCase(),
+        attrs: attrArr,
       };
-    },
-    components: {
-      Son,
-    },
-    methods: {
-      method1() {
-        console.log('method1');
-      },
-      method2() {
-        console.log('method2');
-      },
-    },
-  };
-</script>
-
-// son.vue
-<div>
-  <h1>{{foo}}</h1>
-  <grand-son v-bind="$attrs" v-on="$listeners" />
-</div>
-
-<script>
-  import GrandSon from './grandSon.vue';
-  export default {
-    components: {
-      GrandSon,
-    },
-    inheritAttrs: true,
-    props: {
-      foo: String,
-    },
-    created() {
-      console.log(this.$attrs); // {boo: "boo", coo: "coo", doo: "doo"}
-      console.log(this.$listeners); // {method1: ƒ, method2: ƒ}
-    },
-  };
-</script>
-
-// grandSon.vue
-<template>
-  <div>
-    <h2>boo: {{boo}}</h2>
-  </div>
-</template>
-
-<script>
-  export default {
-    props: {
-      boo: String,
-    },
-    created() {
-      console.log(this.$attrs); // {coo: "coo", doo: "doo"}
-      console.log(this.$listeners); // {method1: ƒ, method2: ƒ}
-    },
-  };
-</script>
+      // 将当前标签信息推入栈中，用于后续节点找父节点
+      tagStack.push(tag);
+      lastTag = tagName;
+    }
+  } else {
+    options.end(tagName, startTag.startIndex, startTag.endIndex);
+  }
+}
 ```
 
-`$attrs`表示没有继承数据的对象，格式为{属性名：属性值}。`Vue2.4`提供了`$attrs` ,`$listeners` 来传递数据与事件，跨级组件之间的通讯变得更简单。
-
-### 五、`provide` / `inject`
-
-`Vue2.2.0`以上允许一个祖先组件向其所有子孙后代注入一个依赖，不论组件层次有多深，并在起上下游关系成立的时间里始终生效。一言而蔽之：祖先组件中通过`provider`来提供变量，然后在子孙组件中通过`inject`来注入变量。
-
-`provide` / `inject` API 主要解决了跨级组件间的通信问题，不过它的使用场景，主要是子组件获取上级组件的状态，跨级组件间建立了一种主动提供与依赖注入的关系。
-
-```html
-// father.vue
-<Son />
-
-<script>
-  import Son from './son.vue';
-
-  export default {
-    name: 'App',
-    provide: {
-      eoo: 'eoo',
-    },
-  };
-</script>
-
-// son.vue
-<div>
-  <h1>{{eoo}}</h1>
-</div>
-
-<script>
-  export default {
-    inject: ['eoo'],
-    created() {
-      console.log(this.eoo);
-    },
-  };
-</script>
-```
-
-需要注意的是：`provide` 和 `inject` 绑定并不是可响应的。这是刻意为之的。然而，如果你传入了一个可监听的对象，那么其对象的属性还是可响应的。也就是说当父组件的`eoo`值变动时，子组件的`eoo`值并不会改变。
-
-#### `provide`与`inject` 实现数据响应式
-
-一般来说，有两种办法：
-
-- `provide`祖先组件的实例，然后在子孙组件中注入依赖，这样就可以在子孙组件中直接修改祖先组件的实例的属性，不过这种方法有个缺点就是这个实例上挂载很多没有必要的东西比如`props`，`methods`。
-
-- 使用 Vue.observable 优化响应式 `provide`
+`process`用于生成一个节点对象。
 
 ```js
-// 父组件
-provide() {
+process(tagName: string, attrs: ASTAttr[], unartSlash: string, startIndex: number, endIndex: number) {
+  let element: Vlement = createASTElement(tagName, attrs, currentParentElement);
+
+  if(!root) {
+    root = element;
+  }
+
+  // 判断是否是自关闭标签
+  if(!unartSlash) {
+    currentParentElement = element;
+    tagStack.push(element)
+  } else {
+    closeElement(element);
+  }
+}
+
+// 创建节点对象
+function createASTElement(tagName: string, attrs: Array<ASTAttr>, currentParentElement: Vlement): Vlement {
+  return new Vlement({
+    tagName: tagName,
+    props: generateAttrsMap(attrs),
+    parent: currentParentElement,
+  })
+}
+```
+
+对于处理结束标签来说，其实也就是将之前处理开始标签时入栈的节点信息清除，以及后续虚拟节点的一些处理。
+`praseEndTag`
+
+```js
+// 解析结束标签
+function parseEndTag(tagName?: string, startIndex?: number, endIndex?: number) {
+  let lowerCasedTagName = '';
+  let position;
+  // 匹配最近的开始标签，用于关闭该标签
+  if (tagName) {
+    for (position = tagStack.length - 1; position >= 0; position--) {
+      if (tagStack[position].lowerCasedTag === lowerCasedTagName) {
+        break;
+      }
+    }
+  } else {
+    position = 0;
+  }
+  if (position >= 0) {
+    let i: number = 0;
+    let length: number = tagStack.length - 1;
+    for (i = length; i >= position; i--) {
+      if (options.end) {
+        options.end(tagStack[i].tag, startIndex, endIndex);
+      }
+    }
+    tagStack.length = position;
+
+    lastTag = position > 0 ? tagStack[position - 1].tag : '';
+  } else if (lowerCasedTagName === 'br') {
+    if (options.process) {
+      options.process(tagName, [], true, startIndex, endIndex);
+    }
+  }
+}
+```
+
+`end`完成当前节点对象的生成。
+
+```js
+end (tagName: string, startIndex: number, endIndex: number) {
+  const element: Vlement = tagStack[tagStack.length - 1];
+  tagStack.length -= 1;
+  let lastElement = tagStack[tagStack.length - 1];
+  if(lastElement) {
+    currentParentElement = lastElement;
+  }
+  closeElement(element);
+}
+
+// 与父节点进行关联
+function closeElement(element: Vlement) {
+  trimEndingWhitespace(element);
+  if(currentParentElement) {
+    const length: number = currentParentElement.children.length;
+    const lastChild: Vlement | string | null = length > 0 ? currentParentElement.children[length - 1] : null;
+    lastChild && (lastChild !== "") && fillWithTextNode(currentParentElement)
+    if(currentParentElement.id !== element.id) {
+      currentParentElement.addChild(element);
+      element.parent = currentParentElement;
+    }
+  }
+
+  trimEndingWhitespace(element);
+}
+```
+
+解析父标签内容，取出标签中的文本。
+
+```js
+let restTemplate: string, nextTag: number, content: string;
+if (startIndex >= 0) {
+  restTemplate = template.slice(startIndex);
+  // 文本中的<
+  while (
+    !endTagReg.test(restTemplate) &&
+    !startTagStartReg.test(restTemplate) &&
+    !commentReg.test(restTemplate) &&
+    !conditionalComment.test(restTemplate)
+  ) {
+    nextTag = restTemplate.indexOf('<', 1);
+    if (nextTag < 0) {
+      break;
+    }
+    startIndex += nextTag;
+    restTemplate = template.slice(startIndex);
+  }
+  content = template.substring(0, startIndex);
+  tagStack[tagStack.length - 1].content = content;
+  tailor(startIndex);
+  // 生成文本节点对象
+  options.text(content, startIndex, startIndex + content.length);
+}
+```
+
+`text` 生成文本节点对象并与父节点进行关联
+
+```js
+text(content: string, startIndex: number, endIndex: number) {
+  if(!currentParentElement) {
+    return;
+  }
+
+  content = content.trim();
+  if(content) {
+    currentParentElement.addChild(content);
+  }
+}
+```
+
+到这里为止，从`html`标签解析成为虚拟节点的流程就完成了。
+
+### 2. 虚拟节点
+
+虚拟节点就是使用一个对象描述标签状态。
+
+```js
+class Vlement {
+  id: number;
+  tagName: string;
+  props: keyMap;
+  // 节点开始位置
+  start?: number;
+  // 节点结束位置
+  end?: number;
+  // 用于标记节点
+  key: string;
+  child_num: number;
+  children: Array<Vlement | string>;
+  parent: Vlement | null;
+  _render: () => Element;
+  _diff: (oldNode: Vlement, newNode: Vlement) => object;
+
+  constructor(options: vlementOptions) {
+    this.id = id++;
+    this.tagName = options.tagName;
+    this.props = options.props;
+    this.start = options.start;
+    this.end = options.end;
+    if(this.props.key) {
+      this.key = options.props.key;
+    }
+    this.parent = options.parent;
+    this.child_num = 0;
+    this.children = []
+  }
+
+  addChild(child: Vlement | string) {
+    this.children.push(child);
+    this.child_num++;
+  }
+}
+```
+
+同时提供了一个`_render`方法用于将虚拟节点节点转换成真实`dom`节点。
+
+```js
+Vlement.prototype._render = function () {
+  let el: Element = document.createElement(this.tagName);
+  let props: keyMap = this.props;
+  for (let name in props) {
+    let value: string = props[name];
+    el.setAttribute(name, value);
+  }
+
+  let children: Array<Vlement | string> = this.children;
+  children.forEach(function (child: Vlement | string) {
+    let child_el: Element | Text =
+      child instanceof Vlement
+        ? child._render()
+        : document.createTextNode(_renderToStringEntity(child));
+    el.appendChild(child_el);
+  });
+  return el;
+};
+
+// 解析特殊字符
+const _renderToStringEntity = function (str: string): string {
+  var arrEntities: keyMap = {
+    lt: '<',
+    gt: '>',
+    nbsp: ' ',
+    amp: '&',
+    quot: '"',
+  };
+  return str.replace(/&(lt|gt|nbsp|amp|quot);/gi, function (all, t) {
+    return arrEntities[t];
+  });
+};
+```
+
+在虚拟节点中我们可以对`dom`进行多次操作，最后进行`patch`后渲染成真实节点从而减少重绘和回流。
+
+采用深度遍历方式遍历新旧节点，使用一个`stack`来记录变化。
+
+主要分为几部分：
+
+1. 文本内容差异： 直接替换掉当前的内容；
+
+```js
+if (typeof oldNode === 'string' && typeof newNode === 'string') {
+  // 替换文本
+  if (newNode !== oldNode) {
+    diffList.push({ type: domPatch.TEXT, content: newNode });
+  }
+}
+```
+
+2. 属性差异：当当前标签相同时，比较标签内的属性及其子节点。
+
+```js
+let diffProps: object | null = getDiffProps(<Vlement>oldNode, <Vlement>newNode);
+
+if(diffProps) {
+  diffList.push({ type: domPatch.PROPS, props: diffProps });
+}
+
+// 子节点比较
+if(!isIgnoreChildren(<Vlement>newNode)) {
+  diffChildren(
+    (<Vlement>oldNode).children,
+    (<Vlement>newNode).children,
+    index,
+    difference,
+    diffList
+  )
+}
+```
+
+`getDiffProps` 获取新旧节点中不同的属性。
+
+```js
+// 获取新节点中新增或与旧节点不同的属性
+function getDiffProps(oldNode: Vlement, newNode: Vlement): keyMap | null {
+  // 记录不同属性的数量
+  let count: number = 0;
+  // 旧节点所有属性
+  let oldProps: keyMap = oldNode.props;
+  // 新节点所有属性
+  let newProps: keyMap = newNode.props;
+  // 保存新旧节点中不同的属性
+  let diffProps: keyMap = {};
+  let key: string;
+
+  // 遍历旧节点中的所有属性，判断新旧节点中属性情况
+  for (key in oldProps) {
+    if (newProps[key] !== oldProps[key]) {
+      count++;
+      diffProps[key] = newProps[key];
+    }
+  }
+
+  // 新增属性
+  for (key in newProps) {
+    if (!oldProps.hasOwnProperty(key)) {
+      count++;
+      diffProps[key] = newProps[key];
+    }
+  }
+
+  if (count === 0) {
+    return null;
+  }
+  return diffProps;
+}
+```
+
+`getDiffChildren` 比较新旧子节点。
+
+```js
+function diffChildren(oldChildList: Array<Vlement | string>, newChildList: Array<Vlement| string | null> , index: number, difference: keyMap, diffList: Array<moveMap>): void {
+  let diffMap: diffMap = getDiffList(oldChildList, newChildList, "key");
+  newChildList = diffMap.children;
+
+  if(diffMap.moveList.length) {
+    let reorderPatch: moveMap = { type: domPatch.REORDER, moves: diffMap.moveList };
+    diffList.push(reorderPatch);
+  }
+
+  let leftNode: Vlement | string;
+  let currentNodeIndex: number = index;
+
+  oldChildList.forEach((child, i) => {
+    let newChild: Vlement | string | null = newChildList[i];
+    currentNodeIndex = (leftNode && (<Vlement>leftNode).child_num) ? currentNodeIndex + (<Vlement>leftNode).child_num + 1 : currentNodeIndex + 1;
+    dsfWalk(child, newChild, currentNodeIndex, difference);
+    leftNode = child;
+  })
+}
+```
+
+`getDiffList` 新旧节点子节点对比。使用`key`来标识节点，可以加快`diff`。
+
+```js
+function getDiffList(oldChildList: Array<Vlement | string>, newChildList: Array<Vlement | string | null>, key: string): diffMap {
+  // 获取有一个有key标识的节点索引跟无key标识的节点数组对象
+  let oldMap: KeyIndexAndFree = markKeyIndexAndFree(oldChildList, key);
+  let newMap: KeyIndexAndFree = markKeyIndexAndFree(newChildList, key);
+
+  // 获取带有key值的节点索引
+  let oldKeyIndex: keyMap = oldMap.keyIndex;
+  let newKeyIndex: keyMap = newMap.keyIndex;
+
+  let i: number = 0;
+  let item: Vlement | string | null;
+  let itemKey: string | undefined;
+  // 新旧节点差异patch数组
+  let children: Array<Vlement | string | null> = [];
+
+  // 无key值节点游标
+  let freeIndex: number = 0;
+  // 获取新节点中不带key值的所有节点
+  let newFree: Array<Vlement | string> = newMap.free;
+  let moveList:Array<moveMap> = [];
+
+  // 循环遍历旧节点
+  while(i < oldChildList.length) {
+    item = oldChildList[i];
+    itemKey = getItemKey(item, key);
+    // 旧节点中存在key值
+    if(itemKey) {
+      // 新节点中不存在这个key，说明被删除了
+      if(!newKeyIndex.hasOwnProperty(itemKey)) {
+        // null 代表删除
+        children.push(null);
+      // 新节点中存在key
+      } else {
+        // 新节点中存在带有这个key的节点，获取这个节点的索引
+        let newItemIndex: number = newKeyIndex[itemKey];
+        children.push(newChildList[newItemIndex]);
+      }
+    // 旧节点不存在key，根据旧节点的个数将新节点逐个添加到数组中，当新节点个数比旧节点多时就会有节点添加到数组中
+    } else {
+      let freeItem: Vlement | string = newFree[freeIndex++];
+      if(freeItem) {
+        children.push(freeItem);
+      } else {
+        children.push(null);
+      }
+    }
+    i++;
+  }
+
+  let copyList: Array<Vlement | string | null> = children.slice(0);
+  // 重置
+  i = 0;
+  // 获取旧节点需要移除的节点数组
+  while(i < copyList.length) {
+    if(copyList[i] === null) {
+      _remove(i);
+      _removeCopy(i);
+    } else {
+      i++;
+    }
+  }
+
+  // 游标，一个用于新节点的子节点，另一个用于旧节点跟新节点对比后获取的节点列表
+  let j: number = i = 0;
+
+  while(i < newChildList.length) {
+    item = newChildList[i];
+    itemKey = getItemKey(item, key);
+
+    let copyItem: Vlement | string | null = copyList[j];
+    let copyItemKey: string | undefined = getItemKey(copyItem!, key);
+
+    if(copyItem) {
+      if(itemKey === copyItemKey) {
+        j++;
+      } else {
+        // 旧节点中不存在，就直接插入(不存在对应的key，也直接添加)
+        if(!oldKeyIndex.hasOwnProperty(itemKey!)) {
+          _insert(i, item!);
+        } else {
+          let nextItemKey: string | undefined = getItemKey(copyItemKey![j + 1], key);
+          if(nextItemKey === itemKey) {
+            _remove(i);
+            _removeCopy(j);
+            j++;
+          } else {
+            _insert(i, item!);
+          }
+        }
+      }
+    } else {
+      _insert(i, item!);
+    }
+    i++;
+  }
+
+  let left: number = copyList.length - j;
+  while(j++ < copyList.length) {
+    left--;
+    _remove(left + i);
+  }
+
+
+  function _remove(index: number): void {
+    moveList.push({index: index, type: domPatch.REMOVE});
+  }
+  function _removeCopy(index: number): void {
+    copyList.splice(index, 1);
+  }
+  function _insert(index: number, item: Vlement | string): void {
+    moveList.push({index: index, item: item, type: domPatch.ADD});
+  }
+
   return {
-    global: this
-  }
-},
-
-// 子组件
-inject: {
-  global: {
-    //函数式组件取值不一样
-    default: () =>({})
+    moveList: moveList,
+    children: children
   }
 }
 ```
 
-## 父组件监听子组件生命周期
-
-比如有父组件 `Parent` 和子组件 `Child`，如果父组件监听到子组件挂载 `mounted` 就做一些逻辑处理，可以通过以下写法实现：
+3. 新增节点，直接添加该节点
 
 ```js
-// Parent.vue
-<Child @mounted="doSomething"/>
-
-// Child.vue
-mounted() {
-  this.$emit("mounted");
+if(newNode !== null) {
+  diffList.push({type: domPatch.REPLACE, node: <Vlement>newNode});
 }
 ```
 
-以上需要手动通过 `$emit` 触发父组件的事件，更简单的方式可以在父组件引用子组件时通过 `@hook` 来监听即可，如下所示：
+获取了新旧节点的差异（替换、重排、属性差异、文本差异）后进行`patch`操作。
+`patch`方法的第一个参数是真实根节点，`patches`则是新旧节点对比后得出的差异。同样采用深度遍历的方式。
 
 ```js
-//  Parent.vue
-<Child @hook:mounted="doSomething" ></Child>
+function patch(node: Node, patches: keyMap): void {
+  let walker: walkerType = { index: domPatch.REPLACE };
+  dsfWalk(node, walker, patches);
+}
 
-doSomething() {
-   console.log('父组件监听到 mounted 钩子函数 ...');
-},
+// 深度遍历
+function dsfWalk(node: Node, walker: walkerType, patches: keyMap): void {
+  // 获取patch数组
+  const currentPatches: Array<moveMap> = patches[walker.index];
+  const len: number = node.childNodes ? node.childNodes.length : 0;
 
-//  Child.vue
-mounted(){
-   console.log('子组件触发 mounted 钩子函数 ...');
-},
+  for (let i: number = 0; i < len; i++) {
+    let child: Node = node.childNodes[i];
+    walker.index++;
+    dsfWalk(child, walker, patches);
+  }
 
-// 以上输出顺序为：
-// 子组件触发 mounted 钩子函数 ...
-// 父组件监听到 mounted 钩子函数 ...
-```
-
-当然 `@hook` 方法不仅仅是可以监听 `mounted`，其它的生命周期事件，例如：`created`，`updated`等都可以监听。
-
-## 数组赋值
-
-由于 `JavaScript` 的限制，`Vue` 不能检测到以下数组的变动：
-
-- 当你利用索引直接设置一个数组项时，例如：`vm.items[indexOfItem] = newValue`
-- 当你修改数组的长度时，例如：`vm.items.length = newLength`
-
-为了解决第一个问题，`Vue` 提供了以下操作方法：
-
-```js
-// Vue.set
-Vue.set(vm.items, indexOfItem, newValue);
-// vm.$set，Vue.set的一个别名
-vm.$set(vm.items, indexOfItem, newValue);
-// Array.prototype.splice
-vm.items.splice(indexOfItem, 1, newValue);
-```
-
-为了解决第二个问题，Vue 提供了以下操作方法：
-
-```js
-// Array.prototype.splice
-vm.items.splice(newLength);
-```
-
-## `keep-alive`
-
-`keep-alive` 是 `Vue` 内置的一个组件，可以使被包含的组件保留状态，避免重新渲染 ，其有以下特性：
-
-- 一般结合路由和动态组件一起使用，用于缓存组件；
-- 提供 `include` 和 `exclude` 属性，两者都支持字符串或正则表达式， `include` 表示只有名称匹配的组件会被缓存，`exclude` 表示任何名称匹配的组件都不会被缓存 ，其中 `exclude` 的优先级比 `include` 高；
-- 对应两个钩子函数 `activated` 和 `deactivated` ，当组件被激活时，触发钩子函数 `activated`，当组件被移除时，触发钩子函数 `deactivated`。
-
-## `data`为何是一个函数
-
-```js
-data() {
-  return {
-    name: "data"
+  if (currentPatches) {
+    startPatches(node, currentPatches);
   }
 }
 ```
 
-因为组件是用来复用的，且 `JS` 里对象是引用关系，如果组件中 `data` 是一个对象，那么这样作用域没有隔离，子组件中的 `data` 属性值会相互影响，如果组件中 `data` 选项是一个函数，那么每个实例可以维护一份被返回对象的独立的拷贝，组件实例之间的 `data` 属性值不会互相影响。
-
-## `v-model`原理
-
-我们在 `vue` 项目中主要使用 `v-model` 指令在表单 `input`、`textarea`、`select` 等元素上创建双向数据绑定，我们知道 `v-model` 本质上不过是语法糖，`v-model` 在内部为不同的输入元素使用不同的属性并抛出不同的事件：
-
-- `text` 和 `textarea` 元素使用 `value` 属性和 `input` 事件；
-- `checkbox`和 `radio` 使用 `checked` 属性和 `change` 事件；
-- `select` 字段将 `value` 作为 `prop` 并将 `change` 作为事件。
-
-以 `input` 表单元素为例：
-
-```html
-<input v-model="something" />
-```
-
-相当于
-
-```html
-<input v-bind:value="something" v-on:input="something = $event.target.value" />
-```
-
-如果在自定义组件中，`v-model` 默认会利用名为 `value` 的 `prop` 和名为 `input` 的事件，如下所示：
-
-父组件：
-
-```html
-<ModelChild v-model="message"></ModelChild>
-```
-
-子组件：
+根据不同的差异类型进行不同的操作。
 
 ```js
-<div>{{value}}</div>
-
-props:{
-    value: String
-},
-methods: {
-  test1(){
-     this.$emit('input', '小红')
-  },
-},
+function startPatches(node: Node, currentPatches: Array<moveMap>): void {
+  currentPatches.forEach(currentPatch => {
+    switch (currentPatch.type) {
+      case domPatch.REPLACE:
+        const newNode = (typeof currentPatch.node === 'string') ? document.createTextNode(currentPatch.node) : currentPatch.node!._render();
+        node.parentNode!.replaceChild(newNode, node);
+        break;
+      case domPatch.REORDER:
+        reorderChildren(node, currentPatch.moves!);
+        break;
+      case domPatch.PROPS:
+        setProps(node, currentPatch.props!);
+        break;
+      case domPatch.TEXT:
+        node.textContent = currentPatch.content!
+        break
+      default:
+        throw new Error('Unknown patch type ' + currentPatch.type)
+    }
+  })
+}
 ```
 
-## `Vue SSR`
-
-> `Vue.js` 是构建客户端应用程序的框架。默认情况下，可以在浏览器中输出 `Vue` 组件，进行生成 `DOM` 和操作 `DOM`。然而，也可以将同一个组件渲染为服务端的 `HTML` 字符串，将它们直接发送到浏览器，最后将这些静态标记"激活"为客户端上完全可交互的应用程序。
-> 即：`SSR`大致的意思就是`vue`在客户端将标签渲染成的整个 `html` 片段的工作在服务端完成，服务端形成的`html` 片段直接返回给客户端这个过程就叫做服务端渲染。
-
-**优点：**
-
-- 更好的 `SEO`：因为 `SPA` 页面的内容是通过 `Ajax` 获取，而搜索引擎爬取工具并不会等待`Ajax` 异步完成后再抓取页面内容，所以在 `SPA` 中是抓取不到页面通过 `Ajax` 获取到的内容；而`SSR` 是直接由服务端返回已经渲染好的页面（数据已经包含在页面中），所以搜索引擎爬取工具可以抓取渲染好的页面；
-
-- 更快的内容到达时间（首屏加载更快）：`SPA` 会等待所有 `Vue` 编译后的 `js` 文件都下载完成后，才开始进行页面的渲染，文件下载等需要一定的时间等，所以首屏渲染需要一定的时间；`SSR` 直接由服务端渲染好页面直接返回显示，无需等待下载 `js` 文件及再去渲染等，所以 `SSR` 有更快的内容到达时间；
-
-**缺点：**
-
-- 更多的开发条件限制：例如服务端渲染只支持 `beforCreate` 和 `created` 两个钩子函数，这会导致一些外部扩展库需要特殊处理，才能在服务端渲染应用程序中运行；并且与可以部署在任何静态文件服务器上的完全静态单页面应用程序 `SPA` 不同，服务端渲染应用程序，需要处于 `Node.js server` 运行环境；
-- 更多的服务器负载：在 `Node.js` 中渲染完整的应用程序，显然会比仅仅提供静态文件的 `server` 更加大量占用 CPU 资源 (CPU-intensive - CPU 密集)，因此如果你预料在高流量环境 ( `high traffic` ) 下使用，请准备相应的服务器负载，并明智地采用缓存策略。
-
-## `vue-router`路由模式
-
-1. `hash`: 使用 `URL hash` 值来作路由。支持所有浏览器，包括不支持 `HTML5 History Api` 的浏览器。  
-   实现原理：早期的前端路由的实现就是基于 `location.hash` 来实现的。其实现原理很简单，`location.hash` 的值就是 `URL` 中 `#`后面的内容。
+`reorderChildren` 重新排序
 
 ```js
-http://localhost:8080/#/example
-// hash为 #/example
+// 重新排列
+function reorderChildren(node: Node, moveList: Array<moveMap>): void {
+  let staticNodeList: Array<any> = Array.prototype.slice.call(node.childNodes);
+  let keyMap: keyMap = {};
+
+  staticNodeList.forEach(node => {
+    // 元素节点
+    if(node.nodeType === 1) {
+      const key: string | null = (<Element>node).getAttribute('key');
+      if(key) {
+        keyMap[key] = node;
+      }
+    }
+  })
+
+  moveList.forEach(move => {
+    const i: number | undefined = move.index;
+    if(!i) return;
+    // 移除节点
+    if(move.type === domPatch.REMOVE) {
+      if(staticNodeList[i] === node.childNodes[i]) {
+        node.removeChild(node.childNodes[i]);
+      }
+      staticNodeList.splice(i, 1);
+    } else if(move.type === domPatch.ADD) {
+      const newNode: Node = keyMap[(<Vlement>move.item).key]
+        ? keyMap[(<Vlement>move.item).key].cloneNode(true)
+        : typeof (<string>move.item) === 'string'
+          ? document.createTextNode(<string>move.item)
+          : (<Vlement>move.item)._render();
+
+      staticNodeList.splice(i, 0, newNode);
+      node.insertBefore(newNode, node.childNodes[i] || null);
+    }
+  })
+}
 ```
 
-特性：
-
-- `URL` 中 `hash` 值只是客户端的一种状态，也就是说当向服务器端发出请求时，`hash` 部分不会被发送；
-- `hash` 值的改变，都会在浏览器的访问历史中增加一个记录。因此我们能通过浏览器的回退、前进按钮控制`hash` 的切换；
-- 可以通过 `a` 标签，并设置 `href` 属性，当用户点击这个标签后，`URL` `hash` 值会发生改变；或者使用 `JavaScript` 来对 `loaction.hash` 进行赋值，改变 `URL` 的 `hash` 值；
-- 可以使用 `hashchange` 事件来监听 `hash` 值的变化，从而对页面进行跳转（渲染）。
-
-2. `history`: `HTML5` 提供了 `History API` 来实现 `URL` 的变化。其中做最主要的 `API` 有以下两个：`history.pushState()` 和 `history.repalceState()`。这两个 `API` 可以在不进行刷新的情况下，操作浏览器的历史纪录。唯一不同的是，前者是新增一个历史记录，后者是直接替换当前的历史记录。
-
-特性：
-
-- `pushState` 和 `repalceState` 两个 `API` 来操作实现 `URL` 的变化 ；
-- 我们可以使用 `popstate` 事件来监听 `url` 的变化，从而对页面进行跳转（渲染）；
-- `history.pushState()` 或 `history.replaceState()` 不会触发 `popstate` 事件，这时我们需要手动触发页面跳转（渲染）.
+至此，相关原理已经讲解完了，查看源代码:[https://github.com/leopord-lau/vdom](https://github.com/leopord-lau/vdom)
